@@ -1,0 +1,122 @@
+[
+  {
+    "name": "Fluffy",
+    "status": "available",
+    "category": "Cats",
+    "description": "Friendly cat with long fur"
+  },
+  {
+    "name": "Buddy",
+    "status": "available",
+    "category": "Dogs",
+    "description": "Loyal golden retriever"
+  },
+  {
+    "name": "Max",
+    "status": "pending",
+    "category": "Dogs",
+    "description": "Energetic border collie"
+  },
+  {
+    "name": "Luna",
+    "status": "sold",
+    "category": "Cats",
+    "description": "Graceful siamese cat"
+  },
+  {
+    "name": "Rex",
+    "status": "available",
+    "category": "Dogs",
+    "description": "Strong german shepherd"
+  },
+  {
+    "name": "Whiskers",
+    "status": "pending",
+    "category": "Cats",
+    "description": "Playful tabby cat"
+  },
+  {
+    "name": "Rocky",
+    "status": "sold",
+    "category": "Dogs",
+    "description": "Adorable pug"
+  },
+  {
+    "name": "Shadow",
+    "status": "available",
+    "category": "Cats",
+    "description": "Mysterious black cat"
+  },
+  {
+    "name": "Charlie",
+    "status": "pending",
+    "category": "Dogs",
+    "description": "Friendly labrador"
+  },
+  {
+    "name": "Mittens",
+    "status": "sold",
+    "category": "Cats",
+    "description": "White cat with mittens"
+  },
+  {
+    "name": "Duke",
+    "status": "available",
+    "category": "Dogs",
+    "description": "Noble doberman"
+  },
+  {
+    "name": "Bella",
+    "status": "pending",
+    "category": "Cats",
+    "description": "Beautiful persian cat"
+  },
+  {
+    "name": "Cooper",
+    "status": "sold",
+    "category": "Dogs",
+    "description": "Smart australian shepherd"
+  },
+  {
+    "name": "Tiger",
+    "status": "available",
+    "category": "Cats",
+    "description": "Striped tabby cat"
+  },
+  {
+    "name": "Bear",
+    "status": "pending",
+    "category": "Dogs",
+    "description": "Large saint bernard"
+  },
+  {
+    "name": "Princess",
+    "status": "sold",
+    "category": "Cats",
+    "description": "Elegant ragdoll cat"
+  },
+  {
+    "name": "Zeus",
+    "status": "available",
+    "category": "Dogs",
+    "description": "Powerful rottweiler"
+  },
+  {
+    "name": "Milo",
+    "status": "pending",
+    "category": "Cats",
+    "description": "Curious orange cat"
+  },
+  {
+    "name": "Atlas",
+    "status": "sold",
+    "category": "Dogs",
+    "description": "Strong mastiff"
+  },
+  {
+    "name": "Nova",
+    "status": "available",
+    "category": "Cats",
+    "description": "Shiny black cat"
+  }
+] 

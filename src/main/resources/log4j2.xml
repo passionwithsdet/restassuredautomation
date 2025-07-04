@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" monitorInterval="30">
+    
+    <Properties>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n</Property>
+        <Property name="LOG_FILE_PATH">target/logs</Property>
+        <Property name="LOG_FILE_NAME">petstore-api-test.log</Property>
+    </Properties>
+    
+    <Appenders>
+        <!-- Console Appender -->
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+        </Console>
+        
+        <!-- File Appender -->
+        <RollingFile name="FileAppender" fileName="${LOG_FILE_PATH}/${LOG_FILE_NAME}"
+                     filePattern="${LOG_FILE_PATH}/${LOG_FILE_NAME}.%d{yyyy-MM-dd}-%i.gz">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="10MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+        
+        <!-- Error File Appender -->
+        <RollingFile name="ErrorFileAppender" fileName="${LOG_FILE_PATH}/error.log"
+                     filePattern="${LOG_FILE_PATH}/error.log.%d{yyyy-MM-dd}-%i.gz">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="10MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+            <Filters>
+                <ThresholdFilter level="ERROR" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+        </RollingFile>
+        
+        <!-- JSON Appender for structured logging -->
+        <RollingFile name="JsonAppender" fileName="${LOG_FILE_PATH}/petstore-api-test.json"
+                     filePattern="${LOG_FILE_PATH}/petstore-api-test.json.%d{yyyy-MM-dd}-%i.gz">
+            <JsonLayout complete="false" compact="true" eventEol="true" objectMessageAsJsonObject="true">
+                <KeyValuePair key="timestamp" value="$${date:yyyy-MM-dd'T'HH:mm:ss.SSS'Z'}"/>
+                <KeyValuePair key="level" value="$${level}"/>
+                <KeyValuePair key="logger" value="$${logger}"/>
+                <KeyValuePair key="thread" value="$${thread}"/>
+            </JsonLayout>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="10MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+        
+        <!-- Performance Appender -->
+        <RollingFile name="PerformanceAppender" fileName="${LOG_FILE_PATH}/performance.log"
+                     filePattern="${LOG_FILE_PATH}/performance.log.%d{yyyy-MM-dd}-%i.gz">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [PERFORMANCE] %msg%n"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="10MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+        
+        <!-- API Request/Response Appender -->
+        <RollingFile name="ApiAppender" fileName="${LOG_FILE_PATH}/api.log"
+                     filePattern="${LOG_FILE_PATH}/api.log.%d{yyyy-MM-dd}-%i.gz">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [API] %msg%n"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="10MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+        
+    </Appenders>
+    
+    <Loggers>
+        <!-- Root Logger -->
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="FileAppender"/>
+            <AppenderRef ref="ErrorFileAppender"/>
+        </Root>
+        
+        <!-- Framework Loggers -->
+        <Logger name="com.petstore.framework" level="DEBUG" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="FileAppender"/>
+            <AppenderRef ref="JsonAppender"/>
+        </Logger>
+        
+        <!-- API Service Loggers -->
+        <Logger name="com.petstore.api" level="DEBUG" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="FileAppender"/>
+            <AppenderRef ref="ApiAppender"/>
+            <AppenderRef ref="JsonAppender"/>
+        </Logger>
+        
+        <!-- Test Loggers -->
+        <Logger name="com.petstore.tests" level="INFO" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="FileAppender"/>
+            <AppenderRef ref="JsonAppender"/>
+        </Logger>
+        
+        <!-- Performance Loggers -->
+        <Logger name="com.petstore.performance" level="INFO" additivity="false">
+            <AppenderRef ref="PerformanceAppender"/>
+            <AppenderRef ref="JsonAppender"/>
+        </Logger>
+        
+        <!-- RestAssured Loggers -->
+        <Logger name="io.restassured" level="INFO" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="ApiAppender"/>
+        </Logger>
+        
+        <!-- HTTP Client Loggers -->
+        <Logger name="org.apache.http" level="WARN" additivity="false">
+            <AppenderRef ref="FileAppender"/>
+        </Logger>
+        
+        <!-- TestNG Loggers -->
+        <Logger name="org.testng" level="INFO" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="FileAppender"/>
+        </Logger>
+        
+        <!-- Allure Loggers -->
+        <Logger name="io.qameta.allure" level="INFO" additivity="false">
+            <AppenderRef ref="FileAppender"/>
+        </Logger>
+        
+        <!-- ExtentReports Loggers -->
+        <Logger name="com.aventstack.extentreports" level="INFO" additivity="false">
+            <AppenderRef ref="FileAppender"/>
+        </Logger>
+        
+        <!-- Database Loggers -->
+        <Logger name="java.sql" level="WARN" additivity="false">
+            <AppenderRef ref="FileAppender"/>
+        </Logger>
+        
+        <!-- Spring Loggers (if using Spring) -->
+        <Logger name="org.springframework" level="WARN" additivity="false">
+            <AppenderRef ref="FileAppender"/>
+        </Logger>
+        
+        <!-- Hibernate Loggers (if using Hibernate) -->
+        <Logger name="org.hibernate" level="WARN" additivity="false">
+            <AppenderRef ref="FileAppender"/>
+        </Logger>
+        
+        <!-- Custom Performance Logger -->
+        <Logger name="PerformanceLogger" level="INFO" additivity="false">
+            <AppenderRef ref="PerformanceAppender"/>
+            <AppenderRef ref="JsonAppender"/>
+        </Logger>
+        
+        <!-- Custom API Logger -->
+        <Logger name="ApiLogger" level="DEBUG" additivity="false">
+            <AppenderRef ref="ApiAppender"/>
+            <AppenderRef ref="JsonAppender"/>
+        </Logger>
+        
+    </Loggers>
+    
+</Configuration> 
