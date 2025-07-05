@@ -19,8 +19,6 @@ services:
       - ./target/allure-results:/app/target/allure-results
     networks:
       - test-network
-    depends_on:
-      - mongodb
     command: ["mvn", "clean", "test", "-Dtest=Regression Tests"]
     restart: unless-stopped
 

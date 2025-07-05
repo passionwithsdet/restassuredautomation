@@ -47,6 +47,35 @@ pipeline {
                         docker --version
                         docker-compose --version
                     '''
+                    
+                    // Check for existing MongoDB container
+                    sh '''
+                        echo "Checking for existing MongoDB container..."
+                        if docker ps -q -f name=petstore-test-mongodb | grep -q .; then
+                            echo "✅ Found existing MongoDB container, will reuse it"
+                            export MONGODB_EXISTS=true
+                        else
+                            echo "📦 No existing MongoDB found, will start new one"
+                            export MONGODB_EXISTS=false
+                        fi
+                    '''
+                }
+            }
+        }
+        
+        stage('Setup MongoDB') {
+            steps {
+                script {
+                    sh '''
+                        if [ "$MONGODB_EXISTS" = "false" ]; then
+                            echo "🚀 Starting MongoDB container..."
+                            docker-compose -f ${DOCKER_COMPOSE_FILE} up -d mongodb
+                            echo "⏳ Waiting for MongoDB to be ready..."
+                            sleep 10
+                        else
+                            echo "✅ Using existing MongoDB container"
+                        fi
+                    '''
                 }
             }
         }
@@ -160,10 +189,16 @@ pipeline {
     post {
         always {
             script {
-                // Cleanup Docker resources
+                // Cleanup Docker resources (but preserve MongoDB if it was already running)
                 sh '''
                     echo "Cleaning up Docker resources..."
-                    docker-compose -f ${DOCKER_COMPOSE_FILE} down -v
+                    if [ "$MONGODB_EXISTS" = "false" ]; then
+                        echo "🗑️ Removing MongoDB container (was created by this build)"
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} down -v
+                    else
+                        echo "✅ Keeping existing MongoDB container"
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} down
+                    fi
                     docker system prune -f
                 '''
                 
