@@ -18,7 +18,7 @@ COPY src ./src
 RUN mvn clean compile test-compile -DskipTests
 
 # Stage 2: Runtime stage
-FROM eclipse-temurin:17-jre-jammy
+FROM maven:3.9.6-eclipse-temurin-17
 
 # Install necessary packages
 RUN apt-get update && apt-get install -y \
@@ -49,7 +49,8 @@ RUN mkdir -p /app/target/reports \
     /app/target/screenshots \
     /app/target/allure-results \
     /app/target/allure-report \
-    /app/test-results
+    /app/test-results \
+    /home/appuser/.m2/repository
 
 # Set working directory
 WORKDIR /app
@@ -68,7 +69,7 @@ COPY testng.xml .
 COPY src/test/resources/testdata ./src/test/resources/testdata
 
 # Set ownership
-RUN chown -R appuser:appuser /app
+RUN chown -R appuser:appuser /app /home/appuser
 
 # Switch to app user
 USER appuser
