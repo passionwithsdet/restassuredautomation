@@ -109,14 +109,13 @@ pipeline {
                         archiveArtifacts artifacts: '**/reports/**/*, **/logs/**/*, **/allure-results/**/*', 
                                            allowEmptyArchive: true
                         
-                        // Generate Allure report
-                        allure([
-                            includeProperties: false,
-                            jdk: '',
-                            properties: [],
-                            reportBuildPolicy: 'ALWAYS',
-                            results: [[path: 'allure-results']]
-                        ])
+                        // Generate static HTML reports
+                        sh '''
+                            echo "📊 Reports generated successfully!"
+                            echo "📁 Allure Report: ${WORKSPACE}/target/allure-report/index.html"
+                            echo "📁 ExtentReport: ${WORKSPACE}/target/reports/petstore_api_report_*.html"
+                            echo "📁 Custom Report: ${WORKSPACE}/target/reports/custom_report_*.html"
+                        '''
                     }
                 }
             }
@@ -125,6 +124,23 @@ pipeline {
         stage('Generate Reports') {
             steps {
                 script {
+                    sh '''
+                        echo "Generating Allure static HTML reports..."
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
+                            petstore-api-tests \
+                            bash -c "
+                                allure generate /app/target/allure-results --clean -o /app/target/allure-report
+                                echo '✅ Allure report generated at: /app/target/allure-report/index.html'
+                            "
+                    '''
+                    
+                    sh '''
+                        echo "Generating ExtentReports..."
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
+                            petstore-api-tests \
+                            mvn test -Dtest=GenerateCustomReportTest
+                    '''
+                    
                     sh '''
                         echo "Generating custom reports..."
                         docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
@@ -151,8 +167,8 @@ pipeline {
                     docker system prune -f
                 '''
                 
-                // Archive final artifacts
-                archiveArtifacts artifacts: '**/reports/**/*, **/logs/**/*, **/allure-results/**/*', 
+                // Archive final artifacts including static HTML reports
+                archiveArtifacts artifacts: '**/reports/**/*, **/logs/**/*, **/allure-results/**/*, **/allure-report/**/*', 
                                    allowEmptyArchive: true, 
                                    fingerprint: true
                 
@@ -166,7 +182,10 @@ pipeline {
                 echo "✅ Build #${env.BUILD_NUMBER} completed successfully!"
                 echo "🐳 Tests executed in Docker containers"
                 echo "📊 Test Results: ${env.BUILD_URL}testReport/"
-                echo "📈 Allure Report: ${env.BUILD_URL}allure/"
+                echo "📈 Static HTML Reports:"
+                echo "   - Allure Report: ${env.BUILD_URL}artifact/target/allure-report/index.html"
+                echo "   - ExtentReport: ${env.BUILD_URL}artifact/target/reports/"
+                echo "   - Custom Report: ${env.BUILD_URL}artifact/target/reports/"
             }
         }
         

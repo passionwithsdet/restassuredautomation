@@ -33,7 +33,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: adminpassword
       MONGO_INITDB_DATABASE: petstore_test
     ports:
-      - "27017:27017"
+      - "27018:27017"
     volumes:
       - mongodb_data:/data/db
       - ./database/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
@@ -41,21 +41,7 @@ services:
       - test-network
     restart: unless-stopped
 
-  # Allure Report Server
-  allure:
-    image: frankescobar/allure-docker-service
-    container_name: petstore-test-allure
-    environment:
-      CHECK_RESULTS_EVERY_SECONDS: 1
-      KEEP_HISTORY: 1
-    ports:
-      - "5050:5050"
-    volumes:
-      - ./target/allure-results:/app/allure-results
-      - ./target/allure-report:/app/default-reports-portal
-    networks:
-      - test-network
-    restart: unless-stopped
+
 
 volumes:
   mongodb_data:
