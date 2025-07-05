@@ -102,7 +102,7 @@ pipeline {
                                     -e TEST_SUITE=unit \
                                     petstore-api-tests \
                                     mvn clean test \
-                                        -Dtest=**/*Test \
+                                        -Dtest=PetApiTests \
                                         -DexcludedGroups=integration,smoke \
                                         -Dparallel=methods \
                                         -DthreadCount=4 \
@@ -121,7 +121,7 @@ pipeline {
                                     -e TEST_SUITE=integration \
                                     petstore-api-tests \
                                     mvn test \
-                                        -Dtest=**/*IntegrationTest \
+                                        -Dtest=CustomReportExampleTest,GenerateCustomReportTest \
                                         -Dgroups=integration \
                                         -Dparallel=classes \
                                         -DthreadCount=2 \
