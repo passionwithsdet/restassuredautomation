@@ -1,110 +1,180 @@
 pipeline {
     agent any
-
+    
     environment {
-        DOCKER_REGISTRY = 'your-registry.com'
-        IMAGE_NAME = 'enterprise-api-test-framework'
-        IMAGE_TAG = "${env.BUILD_NUMBER}"
-        SLACK_CHANNEL = '#test-automation'
-
-        DOCKER_CREDENTIALS = credentials('docker-registry-credentials')
-
-        // Notification
-        EMAIL_RECIPIENTS = 'qa-team@company.com'
+        // Docker Configuration
+        DOCKER_COMPOSE_FILE = 'docker-compose.jenkins.yml'
+        
+        // Test Configuration
+        TEST_ENVIRONMENT = 'jenkins'
+        PARALLEL_THREADS = '4'
+        
+        // Reporting
+        REPORT_PATH = 'reports'
+        ALLURE_RESULTS = 'allure-results'
     }
-
+    
     options {
-        timeout(time: 1, unit: 'HOURS')
+        timeout(time: 2, unit: 'HOURS')
         timestamps()
         ansiColor('xterm')
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        disableConcurrentBuilds()
     }
-
+    
     triggers {
-        pollSCM('H/15 * * * *')
-        cron('0 2 * * *') // Daily at 2 AM
+        pollSCM('H/15 * * * *')  // Poll every 15 minutes
     }
-
+    
     stages {
-        stage('Checkout Code') {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Build Docker Image') {
+        stage('Checkout & Setup') {
             steps {
                 script {
-                    sh """
-                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-                    """
+                    // Checkout code
+                    checkout scm
+                    
+                    // Set up workspace directories
+                    sh '''
+                        echo "Setting up workspace directories..."
+                        mkdir -p ${WORKSPACE}/reports
+                        mkdir -p ${WORKSPACE}/logs
+                        mkdir -p ${WORKSPACE}/allure-results
+                        mkdir -p ${WORKSPACE}/artifacts
+                    '''
+                    
+                    // Validate Docker
+                    sh '''
+                        echo "Validating Docker environment..."
+                        docker --version
+                        docker-compose --version
+                    '''
                 }
             }
         }
-
-        stage('Run Tests in Docker') {
+        
+        stage('Build Docker Image') {
             steps {
                 script {
-                    sh """
-                        docker run --rm \
-                            -v ${WORKSPACE}/target:/app/target \
-                            ${IMAGE_NAME}:${IMAGE_TAG}
-                    """
+                    sh '''
+                        echo "Building Docker image..."
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} build test-runner
+                    '''
+                }
+            }
+        }
+        
+        stage('Run Tests in Docker') {
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        script {
+                            sh '''
+                                echo "Running Unit Tests in Docker..."
+                                docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
+                                    -e TEST_SUITE=unit \
+                                    test-runner \
+                                    mvn clean test \
+                                        -Dtest=**/*Test \
+                                        -DexcludedGroups=integration,smoke \
+                                        -Dparallel=methods \
+                                        -DthreadCount=4 \
+                                        -Dallure.results.directory=/app/target/allure-results
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Integration Tests') {
+                    steps {
+                        script {
+                            sh '''
+                                echo "Running Integration Tests in Docker..."
+                                docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
+                                    -e TEST_SUITE=integration \
+                                    test-runner \
+                                    mvn test \
+                                        -Dtest=**/*IntegrationTest \
+                                        -Dgroups=integration \
+                                        -Dparallel=classes \
+                                        -DthreadCount=2 \
+                                        -Dallure.results.directory=/app/target/allure-results
+                            '''
+                        }
+                    }
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'target/**/*', allowEmptyArchive: true
+                    script {
+                        // Archive test reports
+                        archiveArtifacts artifacts: '**/reports/**/*, **/logs/**/*, **/allure-results/**/*', 
+                                           allowEmptyArchive: true
+                        
+                        // Generate Allure report
+                        allure([
+                            includeProperties: false,
+                            jdk: '',
+                            properties: [],
+                            reportBuildPolicy: 'ALWAYS',
+                            results: [[path: 'allure-results']]
+                        ])
+                    }
                 }
             }
         }
-
-        stage('Push Docker Image') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                }
-            }
+        
+        stage('Generate Reports') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'docker-registry-credentials',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh """
-                        echo ${DOCKER_PASS} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USER} --password-stdin
-                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
-                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
-                        docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
-                        docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
-                    """
+                script {
+                    sh '''
+                        echo "Generating custom reports..."
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
+                            test-runner \
+                            bash -c "
+                                if [ -f run-custom-report.sh ]; then
+                                    chmod +x run-custom-report.sh
+                                    ./run-custom-report.sh
+                                fi
+                            "
+                    '''
                 }
             }
         }
     }
-
+    
     post {
         always {
-            sh 'docker system prune -f'
+            script {
+                // Cleanup Docker resources
+                sh '''
+                    echo "Cleaning up Docker resources..."
+                    docker-compose -f ${DOCKER_COMPOSE_FILE} down -v
+                    docker system prune -f
+                '''
+                
+                // Archive final artifacts
+                archiveArtifacts artifacts: '**/reports/**/*, **/logs/**/*, **/allure-results/**/*', 
+                                   allowEmptyArchive: true, 
+                                   fingerprint: true
+                
+                // Publish test results
+                publishTestResults testResultsPattern: '**/surefire-reports/*.xml'
+            }
         }
-
+        
         success {
-            slackSend(
-                channel: env.SLACK_CHANNEL,
-                color: 'good',
-                message: "✅ Build #${env.BUILD_NUMBER} SUCCESS — ${env.JOB_NAME}"
-            )
+            script {
+                echo "✅ Build #${env.BUILD_NUMBER} completed successfully!"
+                echo "🐳 Tests executed in Docker containers"
+                echo "📊 Test Results: ${env.BUILD_URL}testReport/"
+                echo "📈 Allure Report: ${env.BUILD_URL}allure/"
+            }
         }
-
+        
         failure {
-            slackSend(
-                channel: env.SLACK_CHANNEL,
-                color: 'danger',
-                message: "❌ Build #${env.BUILD_NUMBER} FAILED — ${env.JOB_NAME}"
-            )
+            script {
+                echo "❌ Build #${env.BUILD_NUMBER} failed!"
+                echo "🔍 Check console output: ${env.BUILD_URL}console"
+            }
         }
     }
-}
+} 

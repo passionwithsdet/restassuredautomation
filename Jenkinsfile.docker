@@ -1,0 +1,314 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Docker Configuration
+        DOCKER_IMAGE = 'enterprise-api-test-framework'
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
+        DOCKER_CONTAINER = "test-runner-${env.BUILD_NUMBER}"
+        
+        // Test Configuration
+        TEST_ENVIRONMENT = 'jenkins'
+        PARALLEL_THREADS = '4'
+        TEST_SUITE = 'regression'
+        
+        // Reporting
+        REPORT_PATH = 'target/reports'
+        ALLURE_RESULTS = 'target/allure-results'
+        ALLURE_REPORT = 'target/allure-report'
+        
+        // Volume Mounts
+        WORKSPACE_VOLUME = "${env.WORKSPACE}:/workspace"
+        REPORTS_VOLUME = "${env.WORKSPACE}/reports:/app/target/reports"
+        LOGS_VOLUME = "${env.WORKSPACE}/logs:/app/target/logs"
+        ALLURE_VOLUME = "${env.WORKSPACE}/allure-results:/app/target/allure-results"
+    }
+    
+    options {
+        timeout(time: 2, unit: 'HOURS')
+        timestamps()
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+    
+    triggers {
+        pollSCM('H/15 * * * *')  // Poll every 15 minutes
+    }
+    
+    stages {
+        stage('Checkout & Setup') {
+            steps {
+                script {
+                    // Checkout code
+                    checkout scm
+                    
+                    // Set up workspace directories
+                    sh '''
+                        echo "Setting up workspace directories..."
+                        mkdir -p ${WORKSPACE}/reports
+                        mkdir -p ${WORKSPACE}/logs
+                        mkdir -p ${WORKSPACE}/allure-results
+                        mkdir -p ${WORKSPACE}/artifacts
+                    '''
+                    
+                    // Validate Docker
+                    sh '''
+                        echo "Validating Docker environment..."
+                        docker --version
+                        docker info
+                    '''
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh '''
+                        echo "Building Docker image..."
+                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                        
+                        echo "Docker image built successfully:"
+                        docker images ${DOCKER_IMAGE}
+                    '''
+                }
+            }
+            post {
+                always {
+                    script {
+                        // Archive Docker artifacts
+                        archiveArtifacts artifacts: 'Dockerfile, docker-compose.yml, .dockerignore', allowEmptyArchive: true
+                    }
+                }
+            }
+        }
+        
+        stage('Run Tests in Docker') {
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        script {
+                            sh '''
+                                echo "Running Unit Tests in Docker container..."
+                                
+                                docker run --rm \
+                                    --name ${DOCKER_CONTAINER}-unit \
+                                    -v ${WORKSPACE_VOLUME} \
+                                    -v ${REPORTS_VOLUME} \
+                                    -v ${LOGS_VOLUME} \
+                                    -v ${ALLURE_VOLUME} \
+                                    -e TEST_ENVIRONMENT=${TEST_ENVIRONMENT} \
+                                    -e PARALLEL_THREADS=${PARALLEL_THREADS} \
+                                    ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                                    mvn clean test \
+                                        -Dtest=**/*Test \
+                                        -DexcludedGroups=integration,smoke \
+                                        -Dparallel=methods \
+                                        -DthreadCount=4 \
+                                        -Dallure.results.directory=/app/target/allure-results
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Integration Tests') {
+                    steps {
+                        script {
+                            sh '''
+                                echo "Running Integration Tests in Docker container..."
+                                
+                                docker run --rm \
+                                    --name ${DOCKER_CONTAINER}-integration \
+                                    -v ${WORKSPACE_VOLUME} \
+                                    -v ${REPORTS_VOLUME} \
+                                    -v ${LOGS_VOLUME} \
+                                    -v ${ALLURE_VOLUME} \
+                                    -e TEST_ENVIRONMENT=${TEST_ENVIRONMENT} \
+                                    -e PARALLEL_THREADS=${PARALLEL_THREADS} \
+                                    ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                                    mvn test \
+                                        -Dtest=**/*IntegrationTest \
+                                        -Dgroups=integration \
+                                        -Dparallel=classes \
+                                        -DthreadCount=2 \
+                                        -Dallure.results.directory=/app/target/allure-results
+                            '''
+                        }
+                    }
+                }
+                
+                stage('API Contract Tests') {
+                    steps {
+                        script {
+                            sh '''
+                                echo "Running API Contract Tests in Docker container..."
+                                
+                                docker run --rm \
+                                    --name ${DOCKER_CONTAINER}-contract \
+                                    -v ${WORKSPACE_VOLUME} \
+                                    -v ${REPORTS_VOLUME} \
+                                    -v ${LOGS_VOLUME} \
+                                    -v ${ALLURE_VOLUME} \
+                                    -e TEST_ENVIRONMENT=${TEST_ENVIRONMENT} \
+                                    -e PARALLEL_THREADS=${PARALLEL_THREADS} \
+                                    ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                                    mvn test \
+                                        -Dtest=**/*ContractTest \
+                                        -Dgroups=contract \
+                                        -Dparallel=methods \
+                                        -DthreadCount=2 \
+                                        -Dallure.results.directory=/app/target/allure-results
+                            '''
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    script {
+                        // Archive test reports from Docker containers
+                        archiveArtifacts artifacts: '**/reports/**/*, **/logs/**/*, **/allure-results/**/*', 
+                                           allowEmptyArchive: true
+                        
+                        // Generate and publish Allure report
+                        allure([
+                            includeProperties: false,
+                            jdk: '',
+                            properties: [],
+                            reportBuildPolicy: 'ALWAYS',
+                            results: [[path: 'allure-results']]
+                        ])
+                    }
+                }
+            }
+        }
+        
+        stage('Run Full Test Suite') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                }
+            }
+            steps {
+                script {
+                    sh '''
+                        echo "Running Full Test Suite in Docker container..."
+                        
+                        docker run --rm \
+                            --name ${DOCKER_CONTAINER}-full \
+                            -v ${WORKSPACE_VOLUME} \
+                            -v ${REPORTS_VOLUME} \
+                            -v ${LOGS_VOLUME} \
+                            -v ${ALLURE_VOLUME} \
+                            -e TEST_ENVIRONMENT=${TEST_ENVIRONMENT} \
+                            -e PARALLEL_THREADS=${PARALLEL_THREADS} \
+                            ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                            mvn clean test \
+                                -Dallure.results.directory=/app/target/allure-results \
+                                -Dparallel=methods \
+                                -DthreadCount=4
+                    '''
+                }
+            }
+        }
+        
+        stage('Generate Custom Reports') {
+            steps {
+                script {
+                    sh '''
+                        echo "Generating custom reports in Docker container..."
+                        
+                        docker run --rm \
+                            --name ${DOCKER_CONTAINER}-reports \
+                            -v ${WORKSPACE_VOLUME} \
+                            -v ${REPORTS_VOLUME} \
+                            -v ${LOGS_VOLUME} \
+                            -v ${ALLURE_VOLUME} \
+                            ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                            bash -c "
+                                if [ -f run-custom-report.sh ]; then
+                                    chmod +x run-custom-report.sh
+                                    ./run-custom-report.sh
+                                fi
+                            "
+                    '''
+                }
+            }
+        }
+        
+        stage('Quality Gates') {
+            steps {
+                script {
+                    // Test result validation
+                    def testResults = currentBuild.getAction(hudson.tasks.junit.TestResultAction.class)
+                    if (testResults && testResults.failCount > 0) {
+                        echo "Test failures detected: ${testResults.failCount}"
+                        // Don't fail the build for test failures in this example
+                    }
+                    
+                    // Check if reports were generated
+                    sh '''
+                        echo "Checking generated reports..."
+                        ls -la ${WORKSPACE}/reports/ || echo "No reports directory found"
+                        ls -la ${WORKSPACE}/allure-results/ || echo "No allure results found"
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                // Cleanup Docker resources
+                sh '''
+                    echo "Cleaning up Docker resources..."
+                    docker system prune -f
+                    docker image prune -f
+                '''
+                
+                // Archive final artifacts
+                archiveArtifacts artifacts: '**/reports/**/*, **/logs/**/*, **/allure-results/**/*, **/artifacts/**/*', 
+                                   allowEmptyArchive: true, 
+                                   fingerprint: true
+                
+                // Publish test results
+                publishTestResults testResultsPattern: '**/surefire-reports/*.xml'
+                
+                // Copy reports to workspace for Allure
+                sh '''
+                    echo "Preparing reports for Allure..."
+                    mkdir -p ${WORKSPACE}/target/allure-results
+                    cp -r ${WORKSPACE}/allure-results/* ${WORKSPACE}/target/allure-results/ 2>/dev/null || echo "No allure results to copy"
+                '''
+            }
+        }
+        
+        success {
+            script {
+                echo "✅ Build #${env.BUILD_NUMBER} completed successfully!"
+                echo "🐳 Tests executed in Docker containers"
+                echo "📊 Test Results: ${env.BUILD_URL}testReport/"
+                echo "📈 Allure Report: ${env.BUILD_URL}allure/"
+                echo "📦 Docker Image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+            }
+        }
+        
+        failure {
+            script {
+                echo "❌ Build #${env.BUILD_NUMBER} failed!"
+                echo "🔍 Check console output: ${env.BUILD_URL}console"
+                echo "🐳 Check Docker logs for container issues"
+            }
+        }
+        
+        unstable {
+            script {
+                echo "⚠️ Build #${env.BUILD_NUMBER} is unstable!"
+                echo "📊 Check test results: ${env.BUILD_URL}testReport/"
+            }
+        }
+    }
+} 

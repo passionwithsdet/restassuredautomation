@@ -90,6 +90,14 @@
     <test name="All Tests" parallel="methods" thread-count="4">
         <classes>
             <class name="com.petstore.tests.PetApiTests"/>
+            <class name="com.petstore.tests.PetStoreApiTests"/>
+        </classes>
+    </test>
+    
+    <!-- PetStore API Tests -->
+    <test name="PetStore API Tests" parallel="methods" thread-count="4">
+        <classes>
+            <class name="com.petstore.tests.PetStoreApiTests"/>
         </classes>
     </test>
     

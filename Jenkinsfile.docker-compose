@@ -1,0 +1,315 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Docker Configuration
+        DOCKER_COMPOSE_FILE = 'docker-compose.jenkins.yml'
+        WORKSPACE_VOLUME = "${env.WORKSPACE}:/workspace"
+        
+        // Test Configuration
+        TEST_ENVIRONMENT = 'jenkins'
+        PARALLEL_THREADS = '4'
+        TEST_SUITE = 'regression'
+        
+        // Reporting
+        REPORT_PATH = 'reports'
+        ALLURE_RESULTS = 'allure-results'
+        ALLURE_REPORT = 'allure-report'
+    }
+    
+    options {
+        timeout(time: 2, unit: 'HOURS')
+        timestamps()
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+    
+    triggers {
+        pollSCM('H/15 * * * *')  // Poll every 15 minutes
+    }
+    
+    stages {
+        stage('Checkout & Setup') {
+            steps {
+                script {
+                    // Checkout code
+                    checkout scm
+                    
+                    // Set up workspace directories
+                    sh '''
+                        echo "Setting up workspace directories..."
+                        mkdir -p ${WORKSPACE}/reports
+                        mkdir -p ${WORKSPACE}/logs
+                        mkdir -p ${WORKSPACE}/allure-results
+                        mkdir -p ${WORKSPACE}/allure-report
+                        mkdir -p ${WORKSPACE}/artifacts
+                    '''
+                    
+                    // Validate Docker and Docker Compose
+                    sh '''
+                        echo "Validating Docker environment..."
+                        docker --version
+                        docker-compose --version
+                        docker info
+                    '''
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh '''
+                        echo "Building Docker image with Docker Compose..."
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} build test-runner
+                        
+                        echo "Docker image built successfully:"
+                        docker images enterprise-api-test-framework:jenkins
+                    '''
+                }
+            }
+            post {
+                always {
+                    script {
+                        // Archive Docker artifacts
+                        archiveArtifacts artifacts: 'Dockerfile.jenkins, docker-compose.jenkins.yml, .dockerignore', allowEmptyArchive: true
+                    }
+                }
+            }
+        }
+        
+        stage('Start Test Environment') {
+            steps {
+                script {
+                    sh '''
+                        echo "Starting test environment with Docker Compose..."
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} up -d mongodb
+                        
+                        # Wait for MongoDB to be ready
+                        echo "Waiting for MongoDB to be ready..."
+                        sleep 10
+                    '''
+                }
+            }
+        }
+        
+        stage('Run Tests in Docker') {
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        script {
+                            sh '''
+                                echo "Running Unit Tests in Docker container..."
+                                
+                                docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
+                                    -e TEST_SUITE=unit \
+                                    -e PARALLEL_THREADS=4 \
+                                    test-runner \
+                                    mvn clean test \
+                                        -Dtest=**/*Test \
+                                        -DexcludedGroups=integration,smoke \
+                                        -Dparallel=methods \
+                                        -DthreadCount=4 \
+                                        -Dallure.results.directory=/app/target/allure-results
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Integration Tests') {
+                    steps {
+                        script {
+                            sh '''
+                                echo "Running Integration Tests in Docker container..."
+                                
+                                docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
+                                    -e TEST_SUITE=integration \
+                                    -e PARALLEL_THREADS=2 \
+                                    test-runner \
+                                    mvn test \
+                                        -Dtest=**/*IntegrationTest \
+                                        -Dgroups=integration \
+                                        -Dparallel=classes \
+                                        -DthreadCount=2 \
+                                        -Dallure.results.directory=/app/target/allure-results
+                            '''
+                        }
+                    }
+                }
+                
+                stage('API Contract Tests') {
+                    steps {
+                        script {
+                            sh '''
+                                echo "Running API Contract Tests in Docker container..."
+                                
+                                docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
+                                    -e TEST_SUITE=contract \
+                                    -e PARALLEL_THREADS=2 \
+                                    test-runner \
+                                    mvn test \
+                                        -Dtest=**/*ContractTest \
+                                        -Dgroups=contract \
+                                        -Dparallel=methods \
+                                        -DthreadCount=2 \
+                                        -Dallure.results.directory=/app/target/allure-results
+                            '''
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    script {
+                        // Archive test reports from Docker containers
+                        archiveArtifacts artifacts: '**/reports/**/*, **/logs/**/*, **/allure-results/**/*', 
+                                           allowEmptyArchive: true
+                        
+                        // Generate and publish Allure report
+                        allure([
+                            includeProperties: false,
+                            jdk: '',
+                            properties: [],
+                            reportBuildPolicy: 'ALWAYS',
+                            results: [[path: 'allure-results']]
+                        ])
+                    }
+                }
+            }
+        }
+        
+        stage('Run Full Test Suite') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                }
+            }
+            steps {
+                script {
+                    sh '''
+                        echo "Running Full Test Suite in Docker container..."
+                        
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
+                            -e TEST_SUITE=full \
+                            -e PARALLEL_THREADS=4 \
+                            test-runner \
+                            mvn clean test \
+                                -Dallure.results.directory=/app/target/allure-results \
+                                -Dparallel=methods \
+                                -DthreadCount=4
+                    '''
+                }
+            }
+        }
+        
+        stage('Generate Custom Reports') {
+            steps {
+                script {
+                    sh '''
+                        echo "Generating custom reports in Docker container..."
+                        
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
+                            test-runner \
+                            bash -c "
+                                if [ -f run-custom-report.sh ]; then
+                                    chmod +x run-custom-report.sh
+                                    ./run-custom-report.sh
+                                fi
+                            "
+                    '''
+                }
+            }
+        }
+        
+        stage('Start Allure Server') {
+            steps {
+                script {
+                    sh '''
+                        echo "Starting Allure Report Server..."
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} up -d allure-server
+                        
+                        echo "Allure Report Server started at: http://localhost:5050"
+                        echo "Allure Report URL: ${env.BUILD_URL}allure/"
+                    '''
+                }
+            }
+        }
+        
+        stage('Quality Gates') {
+            steps {
+                script {
+                    // Test result validation
+                    def testResults = currentBuild.getAction(hudson.tasks.junit.TestResultAction.class)
+                    if (testResults && testResults.failCount > 0) {
+                        echo "Test failures detected: ${testResults.failCount}"
+                        // Don't fail the build for test failures in this example
+                    }
+                    
+                    // Check if reports were generated
+                    sh '''
+                        echo "Checking generated reports..."
+                        ls -la ${WORKSPACE}/reports/ || echo "No reports directory found"
+                        ls -la ${WORKSPACE}/allure-results/ || echo "No allure results found"
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                // Stop and cleanup Docker Compose services
+                sh '''
+                    echo "Stopping Docker Compose services..."
+                    docker-compose -f ${DOCKER_COMPOSE_FILE} down -v
+                    
+                    echo "Cleaning up Docker resources..."
+                    docker system prune -f
+                    docker image prune -f
+                '''
+                
+                // Archive final artifacts
+                archiveArtifacts artifacts: '**/reports/**/*, **/logs/**/*, **/allure-results/**/*, **/artifacts/**/*', 
+                                   allowEmptyArchive: true, 
+                                   fingerprint: true
+                
+                // Publish test results
+                publishTestResults testResultsPattern: '**/surefire-reports/*.xml'
+                
+                // Copy reports to workspace for Allure
+                sh '''
+                    echo "Preparing reports for Allure..."
+                    mkdir -p ${WORKSPACE}/target/allure-results
+                    cp -r ${WORKSPACE}/allure-results/* ${WORKSPACE}/target/allure-results/ 2>/dev/null || echo "No allure results to copy"
+                '''
+            }
+        }
+        
+        success {
+            script {
+                echo "✅ Build #${env.BUILD_NUMBER} completed successfully!"
+                echo "🐳 Tests executed in Docker containers using Docker Compose"
+                echo "📊 Test Results: ${env.BUILD_URL}testReport/"
+                echo "📈 Allure Report: ${env.BUILD_URL}allure/"
+                echo "🌐 Allure Server: http://localhost:5050"
+            }
+        }
+        
+        failure {
+            script {
+                echo "❌ Build #${env.BUILD_NUMBER} failed!"
+                echo "🔍 Check console output: ${env.BUILD_URL}console"
+                echo "🐳 Check Docker Compose logs for container issues"
+            }
+        }
+        
+        unstable {
+            script {
+                echo "⚠️ Build #${env.BUILD_NUMBER} is unstable!"
+                echo "📊 Check test results: ${env.BUILD_URL}testReport/"
+            }
+        }
+    }
+} 

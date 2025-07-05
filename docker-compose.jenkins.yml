@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # Test Runner Service for Jenkins
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    image: enterprise-api-test-framework:jenkins
+    container_name: jenkins-test-runner
+    environment:
+      - TEST_ENVIRONMENT=jenkins
+      - PARALLEL_THREADS=4
+      - ALLURE_RESULTS_DIRECTORY=/app/target/allure-results
+      - REPORT_PATH=/app/target/reports
+      - LOG_PATH=/app/target/logs
+    volumes:
+      # Mount Jenkins workspace
+      - ${WORKSPACE:-./workspace}:/workspace:rw
+      # Mount reports directory
+      - ${WORKSPACE:-./workspace}/reports:/app/target/reports:rw
+      # Mount logs directory
+      - ${WORKSPACE:-./workspace}/logs:/app/target/logs:rw
+      # Mount allure results
+      - ${WORKSPACE:-./workspace}/allure-results:/app/target/allure-results:rw
+      # Mount test data
+      - ./src/test/resources/testdata:/app/src/test/resources/testdata:ro
+    networks:
+      - jenkins-test-network
+    restart: "no"
+    user: "appuser"
+    working_dir: /app
+
+  # MongoDB for test data (optional)
+  mongodb:
+    image: mongo:6.0
+    container_name: jenkins-mongodb
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=testdb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./database/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
+    networks:
+      - jenkins-test-network
+    restart: "no"
+
+  # Allure Report Server (optional)
+  allure-server:
+    image: frankescobar/allure-docker-service
+    container_name: jenkins-allure-server
+    environment:
+      - CHECK_RESULTS_EVERY_SECONDS=1
+      - KEEP_HISTORY=1
+    ports:
+      - "5050:5050"
+    volumes:
+      - ${WORKSPACE:-./workspace}/allure-results:/app/allure-results:ro
+      - ${WORKSPACE:-./workspace}/allure-report:/app/default-reports:rw
+    networks:
+      - jenkins-test-network
+    restart: "no"
+    depends_on:
+      - test-runner
+
+networks:
+  jenkins-test-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local 
