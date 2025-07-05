@@ -3,7 +3,7 @@ pipeline {
     
     environment {
         // Docker Configuration
-        DOCKER_COMPOSE_FILE = 'docker-compose.jenkins.yml'
+        DOCKER_COMPOSE_FILE = 'docker-compose.yml'
         
         // Test Configuration
         TEST_ENVIRONMENT = 'jenkins'
@@ -56,7 +56,7 @@ pipeline {
                 script {
                     sh '''
                         echo "Building Docker image..."
-                        docker-compose -f ${DOCKER_COMPOSE_FILE} build test-runner
+                        docker-compose -f ${DOCKER_COMPOSE_FILE} build petstore-api-tests
                     '''
                 }
             }
@@ -71,7 +71,7 @@ pipeline {
                                 echo "Running Unit Tests in Docker..."
                                 docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
                                     -e TEST_SUITE=unit \
-                                    test-runner \
+                                    petstore-api-tests \
                                     mvn clean test \
                                         -Dtest=**/*Test \
                                         -DexcludedGroups=integration,smoke \
@@ -90,7 +90,7 @@ pipeline {
                                 echo "Running Integration Tests in Docker..."
                                 docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
                                     -e TEST_SUITE=integration \
-                                    test-runner \
+                                    petstore-api-tests \
                                     mvn test \
                                         -Dtest=**/*IntegrationTest \
                                         -Dgroups=integration \
@@ -128,7 +128,7 @@ pipeline {
                     sh '''
                         echo "Generating custom reports..."
                         docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
-                            test-runner \
+                            petstore-api-tests \
                             bash -c "
                                 if [ -f run-custom-report.sh ]; then
                                     chmod +x run-custom-report.sh
