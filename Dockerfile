@@ -1,8 +1,8 @@
-# PetStore API Test Automation Framework Docker Image
+# Enterprise API Test Automation Framework Docker Image
 # Multi-stage build for optimized image size
 
 # Stage 1: Build stage
-FROM maven:3.8.6-openjdk-11 AS builder
+FROM maven:3.9.6-eclipse-temurin-17 AS builder
 
 # Set working directory
 WORKDIR /app
@@ -18,7 +18,7 @@ COPY src ./src
 RUN mvn clean compile test-compile -DskipTests
 
 # Stage 2: Runtime stage
-FROM openjdk:11-jre-slim
+FROM eclipse-temurin:17-jre-jammy
 
 # Install necessary packages
 RUN apt-get update && apt-get install -y \
@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables
-ENV JAVA_HOME=/usr/local/openjdk-11
+ENV JAVA_HOME=/opt/java/openjdk
 ENV PATH=$JAVA_HOME/bin:$PATH
 ENV MAVEN_HOME=/usr/share/maven
 ENV PATH=$MAVEN_HOME/bin:$PATH
@@ -61,9 +61,6 @@ COPY testng.xml .
 # Copy test data
 COPY src/test/resources/testdata ./src/test/resources/testdata
 
-# Copy scripts
-COPY scripts ./scripts
-
 # Set ownership
 RUN chown -R appuser:appuser /app
 
@@ -83,7 +80,7 @@ CMD ["mvn", "clean", "test", "-Dtest=Smoke Tests"]
 # Labels
 LABEL maintainer="QA Team <ve.vinu@gmail.com>"
 LABEL version="1.0.0"
-LABEL description="PetStore API Test Automation Framework"
+LABEL description="Enterprise API Test Automation Framework"
 LABEL framework="RestAssured + TestNG"
 LABEL reporting="ExtentReports + Allure"
 LABEL ci="Jenkins + Docker" 
