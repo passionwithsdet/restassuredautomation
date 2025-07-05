@@ -13,10 +13,7 @@ services:
       - PARALLEL_THREADS=4
       - REPORT_PATH=/app/target/reports
     volumes:
-      - ./target/reports:/app/target/reports
-      - ./target/logs:/app/target/logs
-      - ./target/screenshots:/app/target/screenshots
-      - ./target/allure-results:/app/target/allure-results
+      - ./target:/app/target
     networks:
       - test-network
     command: ["mvn", "clean", "test", "-Dtest=Regression Tests"]

@@ -43,7 +43,7 @@ ENV PATH=$MAVEN_HOME/bin:$PATH
 # Create app user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# Create necessary directories
+# Create necessary directories with proper permissions
 RUN mkdir -p /app/target/reports \
     /app/target/logs \
     /app/target/screenshots \
@@ -68,11 +68,41 @@ COPY testng.xml .
 # Copy test data
 COPY src/test/resources/testdata ./src/test/resources/testdata
 
-# Set ownership
-RUN chown -R appuser:appuser /app /home/appuser
+# Set ownership and permissions
+RUN chown -R appuser:appuser /app /home/appuser && \
+    chmod -R 755 /app/target && \
+    chmod -R 777 /app/target/reports && \
+    chmod -R 777 /app/target/logs && \
+    chmod -R 777 /app/target/screenshots && \
+    chmod -R 777 /app/target/allure-results && \
+    chmod -R 777 /app/target/allure-report
 
-# Switch to app user
-USER appuser
+# Create a startup script to handle permissions
+RUN echo '#!/bin/bash\n\
+if [ "$(id -u)" = "0" ]; then\n\
+    # If running as root, fix permissions and switch to appuser\n\
+    chown -R appuser:appuser /app/target\n\
+    chmod -R 755 /app/target\n\
+    chmod -R 777 /app/target/reports\n\
+    chmod -R 777 /app/target/logs\n\
+    chmod -R 777 /app/target/screenshots\n\
+    chmod -R 777 /app/target/allure-results\n\
+    chmod -R 777 /app/target/allure-report\n\
+    exec gosu appuser "$@"\n\
+else\n\
+    # If not root, run directly\n\
+    exec "$@"\n\
+fi' > /usr/local/bin/entrypoint.sh && \
+    chmod +x /usr/local/bin/entrypoint.sh
+
+# Install gosu for proper user switching
+RUN apt-get update && apt-get install -y gosu && rm -rf /var/lib/apt/lists/*
+
+# Don't switch to appuser here - let entrypoint handle it
+# USER appuser
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # Expose ports (if needed for web reports)
 EXPOSE 8080

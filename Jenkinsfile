@@ -98,8 +98,15 @@ pipeline {
                         script {
                             sh '''
                                 echo "Running Unit Tests in Docker..."
+                                # Ensure target directory exists and has proper permissions
+                                mkdir -p ${WORKSPACE}/target/reports
+                                mkdir -p ${WORKSPACE}/target/allure-results
+                                mkdir -p ${WORKSPACE}/target/allure-report
+                                chmod -R 777 ${WORKSPACE}/target
+                                
                                 docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
                                     -e TEST_SUITE=unit \
+                                    -v ${WORKSPACE}/target:/app/target \
                                     petstore-api-tests \
                                     mvn clean test \
                                         -Dtest=PetApiTests \
@@ -117,8 +124,15 @@ pipeline {
                         script {
                             sh '''
                                 echo "Running Integration Tests in Docker..."
+                                # Ensure target directory exists and has proper permissions
+                                mkdir -p ${WORKSPACE}/target/reports
+                                mkdir -p ${WORKSPACE}/target/allure-results
+                                mkdir -p ${WORKSPACE}/target/allure-report
+                                chmod -R 777 ${WORKSPACE}/target
+                                
                                 docker-compose -f ${DOCKER_COMPOSE_FILE} run --rm \
                                     -e TEST_SUITE=integration \
+                                    -v ${WORKSPACE}/target:/app/target \
                                     petstore-api-tests \
                                     mvn test \
                                         -Dtest=CustomReportExampleTest,GenerateCustomReportTest \
